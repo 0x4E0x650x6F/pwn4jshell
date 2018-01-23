@@ -9,6 +9,6 @@ Other than api... and sintax things should be easy.
 
 
 ## Credits
-Some of the code in this project is based on work from other ppl. 
+Some of the code in this project is based on work from other ppl.   
 For file upload based on Boris Von Leosch.
 

