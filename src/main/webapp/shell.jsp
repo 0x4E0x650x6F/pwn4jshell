@@ -1,9 +1,9 @@
 <%@ page import="java.io.*" %>
-<%@ page import="java.util.Properties" %>
 <%@ page import="java.util.Hashtable" %>
+<%@ page import="java.util.Properties" %>
 <%@ page import="java.util.StringTokenizer" %>
-<%@ page import="java.util.zip.ZipOutputStream" %>
 <%@ page import="java.util.zip.ZipEntry" %>
+<%@ page import="java.util.zip.ZipOutputStream" %>
 
 <%!
     static boolean isNotEmpty(Object obj) {
@@ -71,7 +71,7 @@
         zos.close();
     }
 
-    public enum Attributes {
+    enum Attributes {
 
         OS_VERSION("os.version"),
         OS_NAME("os.name"),
@@ -584,6 +584,8 @@
                     String attributeValue = attributes[i].value();
                     out.println(formatMessage(attributeName+": "+props.getProperty(attributeValue)));
                 }
+
+
             }
         } else if (isNotEmpty(reqMethod) && "POST".equalsIgnoreCase(reqMethod)) {
             if(isNotEmpty(reqContentType) && reqContentType.startsWith("multipart")) {
