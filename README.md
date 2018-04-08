@@ -14,7 +14,11 @@ For file upload based on Boris Von Leosch.
 
 ## Example
 
-### Get basic host information
+### Get basic host information.
+Information includes java system properties. 
+Global JNDI Config if specifically if they implement DataSource.
+Hostname and Ip configuration.
+ 
 http://{ip}:8080/pwn4jshell/shell.jsp?pass=key
 
 ### Execute CMD command Execution

